@@ -84,6 +84,17 @@ endif (LIBUSB_FOUND)
 
 target_link_libraries(${PROJECT_NAME} m dl)
 
+# Detect and link libgpiod
+find_library(GPIOD_LIB gpiod)
+if(GPIOD_LIB)
+    message(STATUS "Found libgpiod: ${GPIOD_LIB}")
+    target_link_libraries(${PROJECT_NAME} ${GPIOD_LIB})
+else()
+    # Fallback if pkg-config is not available
+    target_link_libraries(${PROJECT_NAME} gpiod)
+    message(STATUS "Linking libgpiod (fallback)")
+endif()
+
 add_custom_command(TARGET ${PROJECT_NAME}
         PRE_LINK COMMAND cmake ..
         WORKING_DIRECTORY ${CMAKE_BINARY_DIR})

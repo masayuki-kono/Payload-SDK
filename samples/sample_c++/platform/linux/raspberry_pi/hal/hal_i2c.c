@@ -30,11 +30,11 @@
 #include <fcntl.h>
 #include <linux/i2c-dev.h>
 #include <linux/i2c.h>
+#include <gpiod.h>
 
 /* Private constants ---------------------------------------------------------*/
 #define I2C_DEVICE_RESET_TIME_US       (25 * 1000)
 #define I2C_DEVICE_RESET_GPIO_NUM      (4)
-#define DJI_SYSTEM_CMD_STR_MAX_SIZE    (64)
 
 /* Private types -------------------------------------------------------------*/
 typedef struct {
@@ -137,40 +137,49 @@ T_DjiReturnCode HalI2c_ReadData(T_DjiI2cHandle i2cHandle, uint16_t devAddress, u
 /* Private functions definition-----------------------------------------------*/
 static void HalI2c_ResetDevice(void)
 {
-    char systemCmd[DJI_SYSTEM_CMD_STR_MAX_SIZE] = {0};
-    int32_t ret;
+    struct gpiod_chip *chip = NULL;
+    struct gpiod_line *line = NULL;
+    int ret;
 
-    sprintf(systemCmd, "echo %d > /sys/class/gpio/export", I2C_DEVICE_RESET_GPIO_NUM);
-    ret = system(systemCmd);
-    if (ret != 0) {
-        printf("Export reset gpio failed, %d\r\n", ret);
+    // Open GPIO chip (gpiochip0)
+    chip = gpiod_chip_open_by_name("gpiochip0");
+    if (chip == NULL) {
+        printf("Failed to open GPIO chip\r\n");
+        return;
     }
 
-    sprintf(systemCmd, "echo out > /sys/class/gpio/gpio4/direction");
-    ret = system(systemCmd);
-    if (ret != 0) {
-        printf("Set gpio direction failed, %d\r\n", ret);
+    // Get GPIO4 line
+    line = gpiod_chip_get_line(chip, I2C_DEVICE_RESET_GPIO_NUM);
+    if (line == NULL) {
+        printf("Failed to get GPIO line %d\r\n", I2C_DEVICE_RESET_GPIO_NUM);
+        gpiod_chip_close(chip);
+        return;
     }
 
-    sprintf(systemCmd, "echo 0 > /sys/class/gpio/gpio4/value");
-    ret = system(systemCmd);
-    if (ret != 0) {
-        printf("Set gpio value failed, %d\r\n", ret);
+    // Request as output mode
+    ret = gpiod_line_request_output(line, "dji_i2c_reset", 1);
+    if (ret < 0) {
+        printf("Failed to request GPIO line as output\r\n");
+        gpiod_chip_close(chip);
+        return;
     }
 
+    // Reset sequence: LOW (0)
+    ret = gpiod_line_set_value(line, 0);
+    if (ret < 0) {
+        printf("Failed to set GPIO value to 0\r\n");
+    }
     usleep(I2C_DEVICE_RESET_TIME_US);
 
-    sprintf(systemCmd, "echo 1 > /sys/class/gpio/gpio4/value");
-    ret = system(systemCmd);
-    if (ret != 0) {
-        printf("Set gpio value failed, %d\r\n", ret);
+    // Release reset: HIGH (1)
+    ret = gpiod_line_set_value(line, 1);
+    if (ret < 0) {
+        printf("Failed to set GPIO value to 1\r\n");
     }
 
-    sprintf(systemCmd, "echo %d > /sys/class/gpio/unexport", I2C_DEVICE_RESET_GPIO_NUM);
-    ret = system(systemCmd);
-    if (ret != 0) {
-        printf("Unexport reset gpio failed, %d\r\n", ret);
-    }
+    // Release resources
+    gpiod_line_release(line);
+    gpiod_chip_close(chip);
 }
 
 /****************** (C) COPYRIGHT DJI Innovations *****END OF FILE****/

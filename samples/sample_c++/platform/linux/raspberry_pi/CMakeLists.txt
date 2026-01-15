@@ -125,6 +125,17 @@ endif ()
 
 target_link_libraries(${PROJECT_NAME} m dl)
 
+# Detect and link libgpiod
+find_library(GPIOD_LIB gpiod)
+if(GPIOD_LIB)
+    message(STATUS "Found libgpiod: ${GPIOD_LIB}")
+    target_link_libraries(${PROJECT_NAME} ${GPIOD_LIB})
+else()
+    # Fallback if pkg-config is not available
+    target_link_libraries(${PROJECT_NAME} gpiod)
+    message(STATUS "Linking libgpiod (fallback)")
+endif()
+
 target_include_directories(${PROJECT_NAME} PRIVATE ${OpenCV_INCLUDE_DIRS})
 if (OpenCV_FOUND)
     target_link_libraries(${PROJECT_NAME} ${OpenCV_LIBS})
